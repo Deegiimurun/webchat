@@ -1,25 +1,34 @@
-import {auth, db} from "../firebase.ts";
-import {useList, useListVals} from "react-firebase-hooks/database";
-import {ref, push} from "firebase/database";
-import {Stack, TextField, Typography} from "@mui/material";
+import {auth, db, firestore} from "../firebase.ts";
+import {useListVals} from "react-firebase-hooks/database";
+import {ref} from "firebase/database";
+import {Button, Stack, TextField, Typography} from "@mui/material";
 import {useEffect, useRef, useState} from "react";
 import {useAuthState} from "react-firebase-hooks/auth";
+import {useCollection} from "react-firebase-hooks/firestore";
+import {collection, addDoc, query, orderBy, limitToLast} from 'firebase/firestore';
 
 export default function Chatbox() {
+    const [page, setPage] = useState(20);
     const [user] = useAuthState(auth);
-    const [snapshots, loading, error] = useList(ref(db, 'messages'));
+    const [snapshot, loading] = useCollection(
+        query(
+            collection(firestore, 'messages'),
+            orderBy("createdAt", "asc"),
+            limitToLast(page),
+        ),
+    );
     const [users] = useListVals<{ username: string, online: boolean }>(ref(db, 'users'));
     const [message, setMessage] = useState('');
     const messageBoxRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         messageBoxRef.current?.children.item(messageBoxRef.current?.childNodes.length - 1)?.scrollIntoView();
-    }, [snapshots]);
+    }, [snapshot]);
 
     function sendChat() {
         if (message.length === 0) return;
 
-        push(ref(db, 'messages'), {
+        addDoc(collection(firestore, 'messages'), {
             username: user?.email,
             message,
             createdAt: new Date().toISOString(),
@@ -35,14 +44,14 @@ export default function Chatbox() {
                 overflowY: 'scroll',
                 overflowX: 'hidden',
             }}>
-                {!loading && snapshots && (
-                    snapshots.map((v) => {
-                        const isUserOnline = users!.find((u) => u.username === v.val().username && u.online);
+                {!loading && snapshot && (
+                    snapshot.docs.map((v) => {
+                        const isUserOnline = users!.find((u) => u.username === v.data().username && u.online);
                         return (
-                            <Stack key={`${v.key}`} direction={'row'} spacing={2} alignItems={'center'}>
+                            <Stack key={`${v.id}`} direction={'row'} spacing={2} alignItems={'center'}>
                                 <Typography
-                                    color={isUserOnline ? 'green' : 'red'}>{v.val().username.replaceAll('@webchat.com', '')}:</Typography>
-                                <Typography>{v.val().message}</Typography>
+                                    color={isUserOnline ? 'green' : 'red'}>{v.data().username.replaceAll('@webchat.com', '')}:</Typography>
+                                <Typography>{v.data().message}</Typography>
                             </Stack>
                         )
                     })
